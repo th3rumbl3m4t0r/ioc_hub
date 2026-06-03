@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="en" class="theme-night">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>IoCHub — IoC graph</title>
+<link rel="stylesheet" href="app.css">
+<script src="vendor/cytoscape.min.js"></script>
+<script src="vendor/xlsx.full.min.js"></script>
+</head>
+<body>
+<div id="app">
+
+  <!-- ============================= TOP SETTINGS BAR ============================ -->
+  <header id="topbar">
+    <div class="bar">
+      <span class="brand">IoCHub <small>// ioc graph</small></span>
+
+      <div class="group">
+        <button id="btnTheme" title="toggle day / night graph background">night</button>
+        <label class="lbl" for="accent">accent</label>
+        <input type="color" id="accent" value="#c8702a" title="single accent colour (X11-style)">
+      </div>
+
+      <div class="group">
+        <button id="btnSettings">settings ▾</button>
+        <button id="btnExport" title="export every entity type to its own xlsx sheet">export xlsx</button>
+        <button id="btnExportMisp" title="export a MISP event JSON — file hash objects + network indicators (like AnyRun's MISP export)">export to misp</button>
+      </div>
+
+      <span class="spacer"></span>
+
+      <div class="group">
+        <span class="lbl">vt key:</span><span id="keyState" class="bad">not set</span>
+        <span class="lbl">backend:</span><span id="authState" class="bad">offline</span>
+        <button id="btnTasks" title="task log">tasks</button>
+        <button id="btnAuth">connect…</button>
+      </div>
+    </div>
+
+    <!-- expandable settings -->
+    <div id="settingsPanel">
+      <div class="setting-block">
+        <h4>VirusTotal API key</h4>
+        <div class="row">
+          <input type="password" id="vtKey" placeholder="paste VT v3 api key">
+          <button id="btnSaveKey" class="primary">save</button>
+          <button id="btnClearKey" class="danger">clear</button>
+        </div>
+        <div class="hint warn" id="keyWarn">
+          The key is <b>encrypted in your browser with your password</b> and stored on the
+          server only as ciphertext. The server can never read it. It is decrypted on login
+          and requires logging in again after a page reload.
+        </div>
+      </div>
+
+
+      <div class="setting-block">
+        <h4>MISP</h4>
+        <div class="row">
+          <input type="password" id="mispKey" placeholder="paste MISP automation api key">
+          <button id="btnSaveMisp" class="primary">save</button>
+          <button id="btnClearMisp" class="danger">clear</button>
+        </div>
+        <div class="row" style="margin-top:5px">
+          <span class="lbl">instance:</span>
+          <input type="text" id="mispUrl" placeholder="https://misp.example.org">
+        </div>
+        <label class="row" style="margin-top:5px;cursor:pointer">
+          <input type="checkbox" id="mispAutoEnrich">
+          <span>auto-enrich every entity from MISP (needs key + instance)</span>
+        </label>
+        <div class="hint">The key is <b>encrypted in your browser with your password</b> like the VT key. MISP queries run directly from your browser to the instance (MISP allows CORS). Common attributes (hashes) cross-check with VirusTotal; comments/tags become <code>misp.*</code>; galaxies &amp; events spawn as sub-entities.</div>
+      </div>
+
+
+      <div class="setting-block">
+        <h4>Backend</h4>
+        <div class="row">
+          <input type="text" id="backendUrl" placeholder="https://host (blank = same origin)">
+          <button id="btnPing">ping</button>
+        </div>
+        <div class="hint">Used for the VT relay, CAPE (later) and optional server-side graph sync.</div>
+      </div>
+
+      <div class="setting-block">
+        <h4>Sub-entity fields <span class="hint">(which attributes auto-render as sub-entities)</span></h4>
+        <div class="toggle-list" id="subToggles"></div>
+        <div class="row" style="margin-top:6px">
+          <label class="lbl"><input type="checkbox" id="showSubs" checked> show sub-entities on graph</label>
+        </div>
+      </div>
+
+      <div class="setting-block" style="grid-column: 1 / -1">
+        <h4>Autopivot rules <span class="hint">(graph auto-expansion; depth, per-type false-positive sensitivity, and attribute rules)</span></h4>
+        <div class="row" style="margin-bottom:8px">
+          <label class="lbl">expansion depth</label>
+          <input type="number" id="apDepth" min="1" max="6" style="width:64px">
+          <span class="hint">passes over the graph (newly-added nodes are pivoted next pass)</span>
+        </div>
+        <div id="autopivotConfig"></div>
+      </div>
+    </div>
+
+    <div id="tasksPanel">
+      <div class="tasks-head">
+        <span class="label">task log</span>
+        <span class="spacer"></span>
+        <button id="btnClearTasks" title="clear finished tasks">clear done</button>
+        <button id="btnCloseTasks">×</button>
+      </div>
+      <div id="taskLog" class="task-log"></div>
+    </div>
+  </header>
+
+  <!-- ================================ MIDDLE ROW ============================== -->
+  <div id="middle">
+
+    <!-- leftmost: graph storage -->
+    <section class="pane" id="paneStore">
+      <div class="titlebar"><span class="grip">▤</span><span class="label">graph storage</span><span class="spacer"></span><button id="collStore" title="collapse">«</button></div>
+      <div class="body" id="storeBody">
+        <div class="hint" style="margin-bottom:8px">Two graph slots, encrypted with your password and stored on the server. Download to keep a permanent copy.</div>
+        <div id="slots"></div>
+        <button id="btnNewGraph" style="width:100%" class="danger">new / clear graph</button>
+      </div>
+    </section>
+
+    <!-- left: entity lists + add -->
+    <section class="pane" id="paneList">
+      <div class="titlebar"><span class="grip">▤</span><span class="label">entities</span><span class="spacer"></span><button id="collList" title="collapse">«</button></div>
+      <div class="body">
+        <div class="section-label">add entity</div>
+        <div class="add-form">
+          <div class="line">
+            <select id="addType">
+              <option value="file">file</option>
+              <option value="domain">domain</option>
+              <option value="ip">ip</option>
+              <option value="url">url</option>
+            </select>
+            <input type="text" id="addValue" placeholder="hash / domain / ip / url">
+            <button id="btnAdd" class="primary">+</button>
+          </div>
+          <div class="line">
+            <label class="lbl" style="display:flex;gap:5px;align-items:center;cursor:pointer">
+              <span>upload file → sha256:</span>
+              <input type="file" id="hashFile" style="display:none">
+              <button id="btnHashFile">choose…</button>
+            </label>
+          </div>
+          <div class="line">
+            <label class="lbl" style="display:flex;gap:5px;align-items:center;cursor:pointer">
+              <span>upload report (pdf/docx):</span>
+              <input type="file" id="reportFile" accept=".pdf,.docx" style="display:none">
+              <button id="btnReportFile" title="Extract IoCs from a PDF/DOCX report. Text first, then OCR. Runs in a separate window with libraries loaded only then; the base app is unaffected if offline.">choose…</button>
+            </label>
+          </div>
+          <textarea id="bulkImport" placeholder="bulk import: one IoC per line (type auto-detected)"></textarea>
+          <button id="btnBulk">import list</button>
+        </div>
+
+        <div class="section-label">graph entities</div>
+        <div id="entityList"></div>
+      </div>
+    </section>
+
+    <!-- report extractor pane: hidden (zero-width) until "upload report" opens
+         it. The OCR/extraction engine and its CDN libraries are injected only
+         when this opens and removed when it closes — nothing here is in the
+         base bundle. -->
+    <section class="pane" id="paneReport">
+      <div class="titlebar"><span class="grip">▤</span><span class="label">report extractor</span><span class="spacer"></span><button id="collReport" title="close">×</button></div>
+      <div class="body" id="reportBody">
+        <div id="reportFname" class="hint" style="word-break:break-all"></div>
+        <div class="rpt-bar"><i id="reportProg"></i></div>
+        <div id="reportStatus" class="hint">waiting…</div>
+        <div id="reportCounts" class="rpt-counts"></div>
+        <div class="line" style="margin:8px 0">
+          <button id="reportAdd" class="primary" disabled>add to graph</button>
+          <button id="reportClose">close</button>
+        </div>
+        <div id="reportLog" class="rpt-log"></div>
+        <canvas id="reportCanvas" style="display:none"></canvas>
+      </div>
+    </section>
+
+    <!-- main: graph + details drawer -->
+    <section id="main">
+      <div id="cy"></div>
+      <div id="graphHint">
+        click an <b>entity</b> → details &amp; enrichers · right-click a <b>sub-entity</b> → collapse · drag to move · scroll to zoom
+      </div>
+      <div id="graphHud">
+        <button id="btnSelectMode" title="toggle box-select mode: drag a rectangle to multi-select entities">⬚ select</button>
+        <button id="btnFit">fit</button>
+        <button id="btnRelayout">re-layout</button>
+        <button id="btnAutoPivot" title="auto-expand the graph: pivot every relationship & rule, adding only results under the false-positive threshold">⇄ autopivot</button>
+        <span id="graphCount" class="hint"></span>
+      </div>
+
+      <!-- details drawer -->
+      <aside id="drawer">
+        <div class="d-resize" id="drawerResize" title="drag to resize panel"></div>
+        <div class="titlebar"><span class="label">details</span><span class="spacer"></span><button id="closeDrawer">×</button></div>
+        <div class="d-head" id="drawerHead"></div>
+        <div class="d-actions" id="drawerActions"></div>
+        <div class="body" id="drawerBody"></div>
+      </aside>
+    </section>
+  </div>
+
+  <!-- ================================ STATUS BAR ============================== -->
+  <footer id="statusbar">
+    <div class="st">entities: <span id="stEnt" class="ok">0</span></div>
+    <div class="st">sub: <span id="stSub" class="ok">0</span></div>
+    <div class="st">relations: <span id="stRel" class="ok">0</span></div>
+    <span class="spacer"></span>
+    <div class="st" id="quota">vt calls this session: <span class="qv" id="stCalls">0</span></div>
+    <div class="st" id="busy"></div>
+  </footer>
+</div>
+
+<!-- generic modal -->
+<div id="overlay"><div class="modal" id="modal">
+  <div class="m-head"><span id="modalTitle">—</span><span class="spacer"></span><button id="modalX">×</button></div>
+  <div class="m-body" id="modalBody"></div>
+  <div class="m-foot" id="modalFoot"></div>
+</div></div>
+
+<div id="toasts"></div>
+
+<script src="app.js"></script>
+</body>
+</html>

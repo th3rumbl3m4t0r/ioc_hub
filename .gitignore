@@ -1,0 +1,16 @@
+# Rust
+/backend/target/
+**/*.rs.bk
+Cargo.lock.orig
+
+# IoCHub runtime data (accounts, graphs, keys, configs) — never commit
+/data/
+**/data/
+*.log
+
+# OS / editor cruft
+.DS_Store
+*.swp
+*~
+.idea/
+.vscode/

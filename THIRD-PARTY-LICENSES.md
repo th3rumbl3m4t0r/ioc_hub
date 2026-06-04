@@ -4,21 +4,6 @@ IoCHub itself is licensed under the GNU General Public License v3.0 (see
 [`LICENSE`](LICENSE)). It bundles and/or loads the third-party components listed
 below. Each remains under its own license; those licenses are GPLv3-compatible.
 
-> **Verify before you ship.** The attributions below were compiled by reading
-> `Cargo.lock`, the vendored file headers, and well-known upstream licensing.
-> They were **not** produced by an automated license scanner in this build
-> environment. Before publishing, please confirm them with the authoritative
-> tooling:
->
-> ```
-> cargo install cargo-deny
-> cargo deny check licenses        # run in backend/
-> ```
->
-> and confirm the exact license of the vendored `xlsx.full.min.js` build (see
-> the SheetJS note below). If `cargo deny` flags anything, treat its output as
-> the source of truth over this file.
-
 ---
 
 ## Why GPLv3 (not GPLv2)

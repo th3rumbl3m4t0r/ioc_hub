@@ -217,7 +217,7 @@ THIRD-PARTY-LICENSES.md     dependency attributions
 
 ## License
 
-Copyright (C) 2026 vmarik.
+Copyright (C) 2026 Vojtěch Mařík.
 
 IoCHub is free software, licensed under the GNU General Public License v3.0 or
 later. Distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;

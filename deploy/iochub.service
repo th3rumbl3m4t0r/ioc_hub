@@ -1,0 +1,69 @@
+[Unit]
+Description=IoCHub backend (IoC graph platform: auth, storage, VirusTotal relay, static analysis, CAPE REST client)
+Documentation=file:/opt/iochub/README.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# Dedicated unprivileged service account. Create once with:
+#   useradd --system --home-dir /opt/iochub --shell /sbin/nologin iochub
+User=iochub
+Group=iochub
+
+WorkingDirectory=/opt/iochub
+ExecStart=/opt/iochub/iochub
+
+# Backend configuration (see README). Bind to loopback only; Apache fronts it.
+Environment=IOCHUB_ADDR=127.0.0.1:8787
+Environment=IOCHUB_DATA=/opt/iochub/data
+Environment=IOCHUB_PUBLIC=/opt/iochub/public
+Environment=IOCHUB_THREADS=8
+# Optional JA3 TLS-fingerprint fallback for egress proxies (e.g. Zscaler) whose
+# source IP rotates. When set, a session may survive an IP change if the JA3
+# matches. Requires a JA3-aware edge to populate this trusted header (stock
+# Apache cannot compute JA3 — see deploy/JA3-SETUP.md). Unset = pure IP binding.
+#Environment=IOCHUB_JA3_HEADER=X-JA3-Hash
+# CAPE sandbox (optional) is configured in /opt/iochub/data/cape.conf, NOT via
+# environment variables. IoCHub drives an EXISTING CAPE you run elsewhere over
+# its REST API (set url/token there). The backend does not run or manage CAPE,
+# so no hardening changes are needed for it.
+
+Restart=on-failure
+RestartSec=2
+
+# --- Sandboxing / hardening ---
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictNamespaces=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+# Syscall allowlist. @system-service is systemd's curated set for ordinary
+# network services (glibc init, threads, sockets, file I/O, exec) — it covers
+# everything the backend AND the tools it spawns (curl, dig, whois, nmap,
+# openssl) need for outbound connections and connect()-based scans. The denials
+# strip privileged/escalation/kernel-management syscalls (a common LPE path),
+# none of which these tools use. nmap already runs connect() scans here because
+# CapabilityBoundingSet is empty (no CAP_NET_RAW), so no raw-socket syscalls are
+# needed. SystemCallErrorNumber returns EPERM (rather than killing) so a stray
+# filtered call degrades gracefully instead of crashing the worker.
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged ~@resources ~@obsolete ~@mount ~@swap ~@reboot ~@module ~@raw-io ~@cpu-emulation
+SystemCallErrorNumber=EPERM
+SystemCallArchitectures=native
+# The data directory must remain writable (graph + user JSON + cape.conf).
+ReadWritePaths=/opt/iochub/data
+# curl (used by the VT relay and the CAPE REST client) needs to resolve +
+# connect outbound; the strict sandbox above still permits that. CAP set empty.
+CapabilityBoundingSet=
+
+[Install]
+WantedBy=multi-user.target

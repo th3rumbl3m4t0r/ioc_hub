@@ -1,0 +1,41 @@
+[package]
+name = "iochub"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.75"
+description = "IoCHub backend: static file server, IP-bound auth, per-user graph storage, VirusTotal relay, CAPE scaffold."
+
+[[bin]]
+name = "iochub"
+path = "src/main.rs"
+
+[dependencies]
+# HTTP server. 0.12 is pure-Rust and builds on Rust 1.75.
+tiny_http = "=0.12.0"
+# Serialization.
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# Password hashing (Argon2id, pure-Rust RustCrypto).
+argon2 = { version = "=0.5.3", features = ["std"] }
+password-hash = { version = "=0.5.0", features = ["std", "getrandom"] }
+# CSPRNG for tokens and salts.
+getrandom = "=0.2.15"
+# Transitive pin: base64ct >=1.7 requires edition2024 (Rust 1.85+); 1.6.0 is the
+# last release that builds on our Rust 1.75 MSRV.
+base64ct = "=1.6.0"
+# Regex for the CAPE user allow-list (patterns like ".*"). MSRV well under 1.75.
+regex = "1"
+# PBKDF2-HMAC-SHA256 to derive the admin's auth secret server-side exactly the
+# way the browser does (so the seeded admin can log in). RustCrypto, low MSRV.
+pbkdf2 = "0.12"
+sha2 = "0.10"
+# Additional hashes for the static analysis engine (RustCrypto, low MSRV).
+sha1 = "0.10"
+md-5 = "0.10"
+
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+strip = true
+panic = "abort"
